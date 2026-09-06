@@ -2,10 +2,11 @@ import { createError, type H3Event } from 'h3'
 export async function provider(event: H3Event, service: 'metrix' | 'webkassa', path: string, body?: Record<string, unknown>, query?: Record<string, any>) {
   const config = useRuntimeConfig(event); const token = session(event)[service]
   if (!token) throw createError({ statusCode: 401, statusMessage: `Подключите ${service === 'metrix' ? 'Metrix' : 'Webkassa'}` })
+  const headers = service === 'metrix' ? { Authorization: `Bearer ${token}` } : webkassaHeaders(event, token)
   try {
     const result: any = await $fetch(`${service === 'metrix' ? config.metrixBase : config.webkassaBase}${path}`, {
       method: body ? 'POST' : 'GET', timeout: 30000, retry: 0, query,
-      headers: service === 'metrix' ? { Authorization: `Bearer ${token}` } : { Token: token, ...(config.webkassaApiKey ? { 'x-api-key': config.webkassaApiKey } : {}) },
+      headers,
       body: body ? { ...body, ...(service === 'webkassa' ? { Token: token } : {}) } : undefined
     })
     if (result.Errors?.length || result.errors || result.success === false) throw new Error('API отклонил запрос')
@@ -20,3 +21,9 @@ export function statQuery(mall: string, tenant: string, from: string, to: string
 }
 export function listData(result: any): any[] { if (!Array.isArray(result.data)) throw createError({ statusCode: 502, statusMessage: 'Неизвестная структура ответа Metrix' }); return result.data }
 export { allPages } from '#shared/pagination'
+
+export function webkassaHeaders(event: H3Event, token?: string): Record<string, string> {
+  const key = useRuntimeConfig(event).webkassaApiKey.trim()
+  if (!key) throw createError({ statusCode: 500, statusMessage: 'Укажите NUXT_WEBKASSA_API_KEY в .env и перезапустите сервер' })
+  return { 'x-api-key': key, ...(token ? { Token: token } : {}) }
+}

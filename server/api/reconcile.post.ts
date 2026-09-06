@@ -12,19 +12,26 @@ export default defineEventHandler(async event => {
   const report: Report = { id: randomUUID(), createdAt: new Date().toISOString(), demo: false, mall: String(b.mallName || b.mall), tenant: String(b.tenantName || 'Все арендаторы'), cashboxes: boxes, from: b.from, to: b.to, mode: b.mode, rows: dates.map(date => ({ date, metrix: null, webkassa: null, tickets: 0 })) }
   const isAll = new Set(catalog.map(x => x.cashbox_name)).size === boxes.length
   if (isAll) {
-    const stats: any = await provider(event, 'metrix', '/ssp/statistic_hourly', undefined, statQuery(b.mall, b.tenant || '', b.from, b.to))
-    if (!Array.isArray(stats.daily_totals)) throw createError({ statusCode: 502, statusMessage: 'В ответе Metrix отсутствует daily_totals' })
-    const daily = dailyMetrix(stats.daily_totals, dates)
-    for (const row of report.rows) {
-      row.metrix = daily.get(row.date) ?? null
-      if (row.metrix === null) row.error = 'Нет однозначного дневного итога Metrix'
+    try {
+      const stats = await provider(event, 'metrix', '/ssp/statistic_hourly', undefined, statQuery(b.mall, b.tenant || '', b.from, b.to))
+      const daily = dailyMetrix(stats, dates)
+      for (const row of report.rows) row.metrix = daily.get(row.date) ?? null
+    } catch (error: any) {
+      if (error.statusCode === 401) throw error
+      // Some scopes omit hourly statistics. Recover from per-cashbox daily totals below.
     }
-  } else {
-    for (const row of report.rows) {
-      try {
-        const data = listData(await provider(event, 'metrix', '/ssp/statistic_tenant', undefined, statQuery(b.mall, b.tenant || '', row.date, row.date)))
-        row.metrix = boxes.reduce((sum, box) => { const matches = data.filter(x => x.cashbox_name === box); if (matches.length !== 1) throw new Error('Нет однозначной суммы выбранной кассы Metrix'); return sum + money(matches[0].main_total) }, 0)
-      } catch { row.error = 'Не удалось получить дневную сумму выбранных касс Metrix' }
+  }
+  for (const row of report.rows.filter(row => row.metrix === null)) {
+    try {
+      const data = listData(await provider(event, 'metrix', '/ssp/statistic_tenant', undefined, statQuery(b.mall, b.tenant || '', row.date, row.date)))
+      row.metrix = boxes.reduce((sum, box) => {
+        const matches = data.filter(x => x.cashbox_name === box)
+        if (matches.length !== 1) throw new Error('Нет однозначной суммы выбранной кассы Metrix')
+        return sum + money(matches[0].main_total)
+      }, 0)
+    } catch (error: any) {
+      if (error.statusCode === 401) throw error
+      row.error = 'Metrix: дневной итог недоступен, резервная загрузка выбранных касс не завершена'
     }
   }
   const totals = new Map(dates.map(date => [date, { sum: 0, count: 0 }]))

@@ -30,10 +30,46 @@ export function demoReport(from: string, to: string, mall: string, tenant: strin
   }) };
 }
 
+/** Accept both the legacy daily_totals array and a complete Metrix response. */
 export function dailyMetrix(data: unknown, dates: string[]): Map<string, number | null> {
-  if (!Array.isArray(data)) throw new Error('В ответе Metrix отсутствует daily_totals');
-  return new Map(dates.map(date => {
-    const matches = data.filter(x => x?.date === date);
-    return [date, matches.length === 1 ? money(matches[0].main_count) : null];
-  }));
+  return metrixDailyResponse(Array.isArray(data) ? { daily_totals: data } : data, dates)
+}
+
+/** Accept known Metrix envelopes; an absent or incomplete day stays unknown. */
+export function metrixDailyResponse(response: unknown, dates: string[]): Map<string, number | null> {
+  const unknown = () => new Map<string, number | null>(dates.map(date => [date, null]))
+  let data: any = response
+  for (let depth = 0; depth < 4; depth++) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return unknown()
+    const hasTotals = Array.isArray(data.daily_totals) && data.daily_totals.length > 0
+    const hasHours = data.data_hours && typeof data.data_hours === 'object' && !Array.isArray(data.data_hours) && Object.keys(data.data_hours).length > 0
+    if (hasTotals || hasHours) break
+    data = data.data ?? data.Data
+  }
+  if (!data || typeof data !== 'object') return unknown()
+  const result = unknown()
+  const totals = Array.isArray(data.daily_totals) ? data.daily_totals : []
+  const hours = data.data_hours && typeof data.data_hours === 'object' && !Array.isArray(data.data_hours) ? Object.entries(data.data_hours) : []
+  for (const date of dates) {
+    const daily = totals.filter((row: any) => row?.date === date)
+    if (daily.length === 1) {
+      try { result.set(date, money(daily[0].main_count)); continue } catch { /* Try the independent hourly breakdown. */ }
+    }
+    if (!hours.length) continue
+    let sum = 0
+    let complete = true
+    for (const [hour, records] of hours) {
+      if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(hour) || !Array.isArray(records)) { complete = false; break }
+      const matches = records.filter((row: any) => row?.date === date)
+      if (matches.length !== 1 || (matches[0].hour !== undefined && matches[0].hour !== hour)) { complete = false; break }
+      try {
+        const row = matches[0]
+        const amount = money(row.main_count ?? row.main_count2)
+        if (row.main_count != null && row.main_count2 != null && amount !== money(row.main_count2)) throw new Error('Несогласованная сумма часа')
+        sum += amount
+      } catch { complete = false; break }
+    }
+    if (complete && Number.isSafeInteger(sum)) result.set(date, sum)
+  }
+  return result
 }

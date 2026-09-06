@@ -10,18 +10,20 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "nuxt typecheck",
     "test:integration": "node tests/integration.mjs",
-    "test:browser": "node tests/browser.mjs"
+    "test:browser": "node tests/browser.mjs",
+    "start": "node --env-file=.env .output/server/index.mjs"
   },
   "dependencies": {
+    "exceljs": "4.4.0",
+    "lucide-vue-next": "0.468.0",
     "nuxt": "4.3.1",
     "vue": "3.5.29",
-    "vue-router": "4.6.4",
-    "lucide-vue-next": "0.468.0",
-    "exceljs": "4.4.0"
+    "vue-router": "4.6.4"
   },
   "devDependencies": {
+    "@types/node": "24.10.1",
+    "playwright-core": "1.58.0",
     "typescript": "5.9.3",
-    "vue-tsc": "3.1.0",
-    "playwright-core": "1.58.0"
+    "vue-tsc": "3.1.0"
   }
 }

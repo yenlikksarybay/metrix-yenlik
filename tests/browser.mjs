@@ -1,11 +1,16 @@
 import { chromium } from 'playwright-core'
 import assert from 'node:assert/strict'
 import ExcelJS from 'exceljs'
-const browser = await chromium.launch({ channel: 'chrome', headless: true })
+import { spawn } from 'node:child_process'
+const baseURL = process.env.BASE_URL || 'http://127.0.0.1:3188'
+const app = process.env.BASE_URL ? null : spawn(process.execPath, ['.output/server/index.mjs'], { env: { ...process.env, HOST: '127.0.0.1', PORT: '3188' }, stdio: 'ignore' })
+let browser
 try {
+  for (let i = 0; i < 100; i++) { try { await fetch(baseURL + '/api/auth/status'); break } catch { await new Promise(resolve => setTimeout(resolve, 100)) } }
+  browser = await chromium.launch({ channel: 'chrome', headless: true })
   const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } }); const errors = []
   page.on('pageerror', e => errors.push(e.message))
-  await page.goto('http://localhost:3000', { waitUntil: 'networkidle' })
+  await page.goto(baseURL, { waitUntil: 'networkidle' })
   assert.equal((await page.locator('h1').innerText()).replace(/\s+/g, ' '), 'Сверка выручки WORKSPACE')
   assert.equal(await page.locator('tbody tr').count(), 7)
   assert.equal(await page.locator('select').first().inputValue(), '1'); assert.equal(await page.locator('select').nth(1).inputValue(), '10')
@@ -21,4 +26,4 @@ try {
   await page.setViewportSize({ width: 390, height: 844 }); await page.screenshot({ path: '/tmp/metrix-mobile.png', fullPage: true }); assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
   await page.getByRole('switch').uncheck(); assert.ok(await page.getByText('Все начинается со сверки').isVisible())
   assert.deepEqual(errors, []); console.log('Browser passed: rendering, tabs, search, details, XLSX data, stale export, rerun, PDF, mobile, mode switch.')
-} finally { await browser.close() }
+} finally { await browser?.close(); app?.kill('SIGTERM') }

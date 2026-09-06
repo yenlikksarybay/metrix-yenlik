@@ -25,3 +25,30 @@ test('pagination rejects a truncated dataset and accepts an actual empty set', a
 test('pagination rejects totals changing during a report', async () => {
   await assert.rejects(allPages(async skip => ({ Data: { Total: skip === 0 ? 80 : 81, Items: Array.from({ length: 50 }, (_, i) => skip + i) } }), 'Items'), /изменились/)
 })
+
+import { metrixDailyResponse } from '../shared/reconciliation.ts'
+test('Metrix daily totals work at top level and inside data envelopes', () => {
+  const payload = { daily_totals: [{ date: '2026-08-31', main_count: '1 285 059.00' }] }
+  for (const response of [payload, { data: payload }, { Data: payload }, { data: { data: payload } }]) assert.equal(metrixDailyResponse(response, ['2026-08-31']).get('2026-08-31'), 128505900)
+})
+test('Metrix without daily_totals aggregates hours without counting the formatted and numeric fields twice', () => {
+  const response = { data_hours: { '10:00': [{ date: '2026-08-31', hour: '10:00', main_count: '21 760.00', main_count2: 21760 }], '11:00': [{ date: '2026-08-31', main_count: '5 578.00' }] } }
+  assert.equal(metrixDailyResponse(response, ['2026-08-31']).get('2026-08-31'), 2733800)
+})
+test('missing, incomplete, duplicate and conflicting hourly results require fallback rather than zero', () => {
+  for (const response of [{}, { data_hours: {} }, { data_hours: { '10:00': [{ date: '2026-08-31', main_count: '1.00' }], '11:00': [] } }, { data_hours: { '10:00': [{ date: '2026-08-31', main_count: '1.00', main_count2: 2 }] } }, { daily_totals: [{ date: '2026-08-31', main_count: 1 }, { date: '2026-08-31', main_count: 2 }] }]) assert.equal(metrixDailyResponse(response, ['2026-08-31']).get('2026-08-31'), null)
+  assert.equal(metrixDailyResponse({ data_hours: { '10:00': [{ date: '2026-08-31', main_count: '0.00' }] } }, ['2026-08-31']).get('2026-08-31'), 0)
+})
+
+test('legacy dailyMetrix no longer throws when daily_totals is absent', () => {
+  for (const payload of [undefined, null, {}, [], { data: [] }, { daily_totals: null }]) {
+    assert.equal(dailyMetrix(payload, ['2026-08-31']).get('2026-08-31'), null)
+  }
+  assert.equal(dailyMetrix({ data: { daily_totals: [{ date: '2026-08-31', main_count: '8 000.00' }] } }, ['2026-08-31']).get('2026-08-31'), 800000)
+})
+test('empty outer totals do not hide valid nested statistics', () => {
+  for (const daily_totals of [null, [], {}]) {
+    const result = dailyMetrix({ daily_totals, data: { daily_totals: [{ date: '2026-08-31', main_count: '0.00' }] } }, ['2026-08-31'])
+    assert.equal(result.get('2026-08-31'), 0)
+  }
+})

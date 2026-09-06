@@ -41,10 +41,10 @@ export function useReconciliation() {
       if (!demo.value && (!status.value.metrix || !status.value.webkassa)) throw new Error('Подключите оба сервиса перед сверкой')
       busy.value = true
       const startSignature = signature()
-      const result = demo.value ? demoReport(from.value, to.value, mallName.value, tenantName.value, [...selected.value], mode.value) : await $fetch<Report>('/api/reconcile', { method: 'POST', body: { mall: mall.value, tenant: tenant.value, mallName: mallName.value, tenantName: tenantName.value, cashboxes: selected.value, from: from.value, to: to.value, mode: mode.value }, timeout: 1800000 })
+      const result = demo.value ? demoReport(from.value, to.value, mallName.value, tenantName.value, [...selected.value], mode.value) : await $fetch<Report, '/api/reconcile'>('/api/reconcile', { method: 'POST', body: { mall: mall.value, tenant: tenant.value, mallName: mallName.value, tenantName: tenantName.value, cashboxes: selected.value, from: from.value, to: to.value, mode: mode.value }, timeout: 1800000 })
       report.value = result; reportSignature.value = startSignature
     } catch (e) { error.value = message(e) } finally { busy.value = false }
   }
-  onMounted(async () => { try { status.value = await $fetch('/api/auth/status') } catch { error.value = 'Сервер недоступен. Проверьте подключение.' } })
+  onMounted(async () => { try { status.value = await $fetch<{ metrix: boolean; webkassa: boolean }>('/api/auth/status') } catch { error.value = 'Сервер недоступен. Проверьте подключение.' } })
   return { demo, status, busy, loading, error, mall, tenant, selected, from, to, mode, malls, tenants, cashboxes, report, stale, refresh, setDemo, changeMall, changeTenant, changeDates, run }
 }
