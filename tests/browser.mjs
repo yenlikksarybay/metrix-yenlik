@@ -1,0 +1,24 @@
+import { chromium } from 'playwright-core'
+import assert from 'node:assert/strict'
+import ExcelJS from 'exceljs'
+const browser = await chromium.launch({ channel: 'chrome', headless: true })
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } }); const errors = []
+  page.on('pageerror', e => errors.push(e.message))
+  await page.goto('http://localhost:3000', { waitUntil: 'networkidle' })
+  assert.equal((await page.locator('h1').innerText()).replace(/\s+/g, ' '), 'Сверка выручки WORKSPACE')
+  assert.equal(await page.locator('tbody tr').count(), 7)
+  assert.equal(await page.locator('select').first().inputValue(), '1'); assert.equal(await page.locator('select').nth(1).inputValue(), '10')
+  await page.screenshot({ path: '/tmp/metrix-desktop.png', fullPage: true })
+  await page.getByRole('button', { name: /^Расхождения/ }).click(); assert.equal(await page.locator('tbody tr').count(), 3)
+  await page.getByRole('button', { name: /^Совпадения/ }).click(); assert.equal(await page.locator('tbody tr').count(), 4)
+  const downloadPromise = page.waitForEvent('download'); await page.getByRole('button', { name: 'Excel', exact: true }).click(); const download = await downloadPromise
+  const path = await download.path(); const book = new ExcelJS.Workbook(); await book.xlsx.readFile(path); const sheet = book.worksheets[0]; assert.equal(sheet.getCell('A9').value, '2026-08-31'); assert.equal(typeof sheet.getCell('B9').value, 'number'); assert.match(sheet.getCell('A1').value, /ДЕМОНСТРАЦИОННЫЕ/); assert.equal(sheet.getCell('A16').value, 'ИТОГО')
+  await page.getByRole('button', { name: /^Все дни/ }).click(); await page.getByLabel('Поиск по дате').fill('01.09'); assert.equal(await page.locator('tbody tr').count(), 1); await page.getByLabel('Поиск по дате').fill('')
+  await page.getByRole('button', { name: 'Подробности за 01.09.2026' }).click(); assert.ok(await page.getByRole('dialog').isVisible()); await page.getByRole('button', { name: 'Закрыть', exact: true }).last().click()
+  await page.locator('.cashbox-select summary').click(); await page.getByLabel('SWK00501677', { exact: true }).check(); await page.locator('.cashbox-select summary').click(); assert.ok(await page.getByRole('button', { name: 'Excel', exact: true }).isDisabled()); await page.getByRole('button', { name: 'Запустить сверку' }).click(); assert.ok(await page.getByRole('button', { name: 'Excel', exact: true }).isEnabled())
+  await page.emulateMedia({ media: 'print' }); await page.pdf({ path: '/tmp/metrix-report.pdf', format: 'A4', landscape: true, printBackground: true }); await page.emulateMedia({ media: 'screen' })
+  await page.setViewportSize({ width: 390, height: 844 }); await page.screenshot({ path: '/tmp/metrix-mobile.png', fullPage: true }); assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+  await page.getByRole('switch').uncheck(); assert.ok(await page.getByText('Все начинается со сверки').isVisible())
+  assert.deepEqual(errors, []); console.log('Browser passed: rendering, tabs, search, details, XLSX data, stale export, rerun, PDF, mobile, mode switch.')
+} finally { await browser.close() }

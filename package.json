@@ -1,0 +1,27 @@
+{
+  "name": "metrix-reconciliation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev --host 0.0.0.0",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "typecheck": "nuxt typecheck",
+    "test:integration": "node tests/integration.mjs",
+    "test:browser": "node tests/browser.mjs"
+  },
+  "dependencies": {
+    "nuxt": "4.3.1",
+    "vue": "3.5.29",
+    "vue-router": "4.6.4",
+    "lucide-vue-next": "0.468.0",
+    "exceljs": "4.4.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vue-tsc": "3.1.0",
+    "playwright-core": "1.58.0"
+  }
+}
