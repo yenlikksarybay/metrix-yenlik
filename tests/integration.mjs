@@ -54,10 +54,30 @@ try {
     assert.equal(recovered.status, 200); assert.equal(recovered.data.rows[0].metrix, 800000); assert.equal(recovered.data.rows[0].error, undefined)
     if (mode === 'missing') assert.equal(calls.filter(x => x.path.endsWith('/statistic_tenant')).length, 2)
   }
+  calls.length = 0
+  const metrixOnly = await request('/api/reconcile', { ...body, source: 'metrix', Take: 0 })
+  assert.equal(metrixOnly.status, 200); assert.equal(metrixOnly.data.rows[0].metrix, 800000); assert.equal(metrixOnly.data.rows[0].webkassa, null)
+  assert.ok(!calls.some(call => call.path.includes('/ExternalHistory')))
+  calls.length = 0
+  const webOnly = await request('/api/reconcile', { ...body, source: 'webkassa', mall: undefined, Take: 25 })
+  assert.equal(webOnly.status, 200); assert.equal(webOnly.data.rows[0].webkassa, 800000); assert.equal(webOnly.data.rows[0].metrix, null)
+  assert.ok(!calls.some(call => call.path.includes('/ssp/')))
+  assert.ok(calls.filter(call => call.path.endsWith('/Shift/ExternalHistory')).every(call => call.data.Take === 25))
+  assert.ok(calls.filter(call => call.path.endsWith('/Ticket/ExternalHistory')).every(call => call.data.Take === 50))
+  assert.equal((await request('/api/reconcile', { ...body, source: 'invalid' })).status, 400)
   broken = true
   const partial = await request('/api/reconcile', body); assert.equal(partial.data.rows[0].webkassa, null); assert.ok(partial.data.rows[0].error)
   assert.equal((await request('/api/reconcile', { ...body, to: '2027-01-01' })).status, 400)
   assert.equal((await request('/api/auth/logout', {}, { Origin: 'https://foreign.example' })).status, 403)
   await request('/api/auth/logout', {}); assert.equal((await request('/api/auth/status')).data.webkassa, false)
+  broken = false
+  for (const service of ['metrix', 'webkassa']) {
+    await request('/api/auth/login', { service, login: 'test', password: 'test' })
+    calls.length = 0
+    const single = await request('/api/reconcile', { ...body, source: service, ...(service === 'webkassa' ? { mall: undefined } : {}) })
+    assert.equal(single.status, 200); assert.equal(single.data.rows[0][service], 800000); assert.equal(single.data.rows[0].error, undefined)
+    assert.ok(calls.every(call => service === 'metrix' ? !call.path.includes('/ExternalHistory') : !call.path.includes('/ssp/')))
+    await request('/api/auth/logout', {})
+  }
   console.log('Integration passed: auth, catalogs, all/subset scope, 80 receipts, nested/hourly/daily fallback, required API key, partial failure, dates, CSRF, logout.')
 } finally { app.kill('SIGTERM'); mock.close() }

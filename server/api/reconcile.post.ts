@@ -3,13 +3,18 @@ import { daysBetween, dailyMetrix, money, ticketAmount, type Report } from '#sha
 export default defineEventHandler(async event => {
   sameOrigin(event); setHeader(event, 'Cache-Control', 'no-store')
   const b = await readBody(event)
+  const source = b.source ?? 'both'
+  if (!['both', 'metrix', 'webkassa'].includes(source)) throw createError({ statusCode: 400, statusMessage: 'Выберите источник данных' })
+  const shiftSkip = b.Skip ?? 0; const shiftTake = b.Take ?? 50
+  if (source !== 'metrix' && (!Number.isSafeInteger(shiftSkip) || shiftSkip < 0 || !Number.isSafeInteger(shiftTake) || shiftTake < 1)) throw createError({ statusCode: 400, statusMessage: 'Skip должен быть целым числом от 0, Take — целым числом от 1' })
   let dates: string[]
   try { dates = daysBetween(b.from, b.to) } catch (e: any) { throw createError({ statusCode: 400, statusMessage: e.message }) }
-  if (!b.mall || !Array.isArray(b.cashboxes) || !b.cashboxes.length || b.cashboxes.length > 30 || b.cashboxes.some((x: unknown) => typeof x !== 'string' || !/^[\w-]{1,64}$/.test(x)) || b.mode !== 'net') throw createError({ statusCode: 400, statusMessage: 'Проверьте выбор касс и режим расчета (до 30 касс)' })
+  if ((source !== 'webkassa' && !b.mall) || !Array.isArray(b.cashboxes) || !b.cashboxes.length || b.cashboxes.length > 30 || b.cashboxes.some((x: unknown) => typeof x !== 'string' || !/^[\w-]{1,64}$/.test(x)) || b.mode !== 'net') throw createError({ statusCode: 400, statusMessage: 'Проверьте выбор касс и режим расчета (до 30 касс)' })
   const boxes = [...new Set<string>(b.cashboxes)]
+  const report: Report = { source, id: randomUUID(), createdAt: new Date().toISOString(), demo: false, mall: source === 'webkassa' ? 'Webkassa' : String(b.mallName || b.mall), tenant: source === 'webkassa' ? 'Выбранные кассы' : String(b.tenantName || 'Все арендаторы'), cashboxes: boxes, from: b.from, to: b.to, mode: b.mode, rows: dates.map(date => ({ date, metrix: null, webkassa: null, tickets: 0 })) }
+  if (source !== 'webkassa') {
   const catalog = listData(await provider(event, 'metrix', '/ssp/statistic_tenant', undefined, statQuery(b.mall, b.tenant || '', b.from, b.to)))
   if (boxes.some(box => !catalog.some(x => x.cashbox_name === box))) throw createError({ statusCode: 400, statusMessage: 'Список касс изменился. Обновите выбор.' })
-  const report: Report = { id: randomUUID(), createdAt: new Date().toISOString(), demo: false, mall: String(b.mallName || b.mall), tenant: String(b.tenantName || 'Все арендаторы'), cashboxes: boxes, from: b.from, to: b.to, mode: b.mode, rows: dates.map(date => ({ date, metrix: null, webkassa: null, tickets: 0 })) }
   const isAll = new Set(catalog.map(x => x.cashbox_name)).size === boxes.length
   if (isAll) {
     try {
@@ -34,13 +39,15 @@ export default defineEventHandler(async event => {
       row.error = 'Metrix: дневной итог недоступен, резервная загрузка выбранных касс не завершена'
     }
   }
+  }
+  if (source === 'metrix') return report
   const totals = new Map(dates.map(date => [date, { sum: 0, count: 0 }]))
   const apiDate = (date: string) => date.split('-').reverse().join('.')
   // Include the preceding day to capture a shift crossing midnight; filter by receipt date.
   const previous = new Date(Date.parse(b.from) - 86400000).toISOString().slice(0, 10)
   try {
     for (const box of boxes) {
-      const shifts = await allPages(skip => provider(event, 'webkassa', '/Shift/ExternalHistory', { CashboxUniqueNumber: box, FromDate: `${apiDate(previous)} 00:00:00`, ToDate: `${apiDate(b.to)} 23:59:59`, Skip: skip, Take: 50 }), 'Shifts')
+      const shifts = await allPages(skip => provider(event, 'webkassa', '/Shift/ExternalHistory', { CashboxUniqueNumber: box, FromDate: `${apiDate(previous)} 00:00:00`, ToDate: `${apiDate(b.to)} 23:59:59`, Skip: skip, Take: shiftTake }), 'Shifts', shiftSkip)
       const seen = new Set<string>()
       for (const shiftNumber of new Set(shifts.map(x => x.ShiftNumber))) {
         if (!Number.isInteger(shiftNumber)) throw new Error('Некорректный номер смены')
@@ -57,6 +64,6 @@ export default defineEventHandler(async event => {
       }
     }
     for (const row of report.rows) { row.webkassa = totals.get(row.date)!.sum; row.tickets = totals.get(row.date)!.count }
-  } catch { for (const row of report.rows) row.error = [row.error, 'Webkassa: загрузка неполная. Повторите сверку.'].filter(Boolean).join('; ') }
+  } catch (error: any) { if (error.statusCode === 401) throw error; for (const row of report.rows) row.error = [row.error, 'Webkassa: загрузка неполная. Повторите сверку.'].filter(Boolean).join('; ') }
   return report
 })

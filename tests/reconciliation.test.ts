@@ -52,3 +52,15 @@ test('empty outer totals do not hide valid nested statistics', () => {
     assert.equal(result.get('2026-08-31'), 0)
   }
 })
+
+test('shift pagination starts at a custom offset and loads remaining pages', async () => {
+  const shifts = Array.from({ length: 7 }, (_, ShiftNumber) => ({ ShiftNumber }))
+  const offsets: number[] = []
+  const result = await allPages(async skip => {
+    offsets.push(skip)
+    return { Data: { Total: shifts.length, Shifts: shifts.slice(skip, skip + 2) } }
+  }, 'Shifts', 2)
+  assert.deepEqual(offsets, [2, 4, 6])
+  assert.deepEqual(result, shifts.slice(2))
+  assert.deepEqual(await allPages(async () => ({ Data: { Total: 7, Shifts: [] } }), 'Shifts', 10), [])
+})

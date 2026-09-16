@@ -1,5 +1,6 @@
 export type DayRow = { date: string; metrix: number | null; webkassa: number | null; tickets: number; error?: string }
-export type Report = { id: string; createdAt: string; demo: boolean; mall: string; tenant: string; cashboxes: string[]; from: string; to: string; mode: string; rows: DayRow[] }
+export type ReportSource = 'both' | 'metrix' | 'webkassa'
+export type Report = { source?: ReportSource; id: string; createdAt: string; demo: boolean; mall: string; tenant: string; cashboxes: string[]; from: string; to: string; mode: string; rows: DayRow[] }
 export function money(value: unknown): number {
   if (typeof value !== 'string' && typeof value !== 'number') throw new Error('Отсутствует сумма в ответе API');
   const normalized = String(value).replace(/[\s\u00a0\u202f]/g, '').replace(',', '.');
