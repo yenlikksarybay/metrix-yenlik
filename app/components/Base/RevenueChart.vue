@@ -30,7 +30,7 @@ const height = (n: number | null) => n === null ? 0 : Math.max(n === 0 ? 0 : 2, 
 <i v-for="n in 5" :key="n" />
 </div>
 <div class="bar-groups">
-<button v-for="row in rows" :key="row.date" class="bar-group" :title="source === 'both' ? `${formatDate(row.date)}: Metrix ${formatMoney(row.metrix)} ₸, Webkassa ${formatMoney(row.webkassa)} ₸` : `${formatDate(row.date)}: ${formatMoney(row[source])} ₸`" @click="emit('detail', row)">
+<button v-for="row in rows" :key="row.date" class="bar-group" type="button" aria-haspopup="dialog" :aria-label="`Подробности за ${formatDate(row.date)}`" :title="source === 'both' ? `${formatDate(row.date)}: Metrix ${formatMoney(row.metrix)} ₸, Webkassa ${formatMoney(row.webkassa)} ₸` : `${formatDate(row.date)}: ${formatMoney(row[source])} ₸`" @click="emit('detail', row)">
 <div class="bar-pair">
 <div v-if="source !== 'webkassa'" class="bar metrix-bar" :style="{ height: `${height(row.metrix)}%` }" />
 <div v-if="source !== 'metrix'" class="bar webkassa-bar" :style="{ height: `${height(row.webkassa)}%` }" />
@@ -42,6 +42,7 @@ const height = (n: number | null) => n === null ? 0 : Math.max(n === 0 ? 0 : 2, 
 </div>
 </div>
 <div class="chart-note">
+<span>Нажмите на столбец, чтобы посмотреть данные за день. </span>
 <span v-if="source === 'both'"><span class="orange-dot" />Дни с расхождениями отмечены оранжевым</span><span v-if="rows.some(r => (r.webkassa || 0) < 0 || (r.metrix || 0) < 0)"> · Высота столбцов показывает модуль суммы; знак указан в таблице.</span>
 </div>
 </section>
